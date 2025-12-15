@@ -42,6 +42,13 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 		//ヘッダー
 		HttpHeaders header_list = r.headers();
 		for (Map.Entry<String, String> header:header_list) {
+			if (header.getKey().equalsIgnoreCase("HOST")) continue;
+			if (header.getKey().equalsIgnoreCase("Content-Length")) continue;
+			if (header.getKey().equalsIgnoreCase("Connection")) continue;
+			if (header.getKey().equalsIgnoreCase("Transfer-Encoding")) continue;
+			if (header.getKey().equalsIgnoreCase("Upgrade")) continue;
+			if (header.getKey().equalsIgnoreCase("Expect")) continue;
+
 			//エンコード設定
 			if (header.getKey().equalsIgnoreCase("RSV-ENCODE")) {
 				request_encode = EncodeType.resolve(header.getValue());
@@ -53,7 +60,7 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 				try {
 					request_data_type = DataType.from_mimetype(header.getValue());
 				} catch (IllegalArgumentException ex) {
-					request_data_type = DataType.JSON;
+					request_data_type = DataType.None;
 				}
 				continue;
 			}
@@ -119,10 +126,17 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 		byte[] client_return_body;
 		String client_return_type;
 		if (server_response_type.equalsIgnoreCase("application/rsdf") || server_response_type.startsWith("application/json")) {
-			ServerResponseConverter converter = new ServerResponseConverter();
-			converter.convert(server_response_type, server_response_body, request_data_type);
-			client_return_body = converter.get_body();
-			client_return_type = converter.get_type();
+			if (request_data_type != DataType.None) {
+				ServerResponseConverter converter = new ServerResponseConverter();
+				converter.convert(server_response_type, server_response_body, request_data_type);
+				client_return_body = converter.get_body();
+				client_return_type = converter.get_type();
+			} else {
+				ServerResponseConverter converter = new ServerResponseConverter();
+				converter.convert(server_response_type, server_response_body, DataType.JSON);
+				client_return_body = converter.get_body();
+				client_return_type = converter.get_type();
+			}
 		} else {
 			//データをそのまま送り返す
 			client_return_body = server_response_body;

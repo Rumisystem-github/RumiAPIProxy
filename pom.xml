@@ -26,12 +26,17 @@
 		<dependency>
 			<groupId>su.rumishistem</groupId>
 			<artifactId>rumi_java_lib</artifactId>
-			<version>13.82</version>
+			<version>13.84</version>
 		</dependency>
 		<dependency>
 			<groupId>com.github.luben</groupId>
 			<artifactId>zstd-jni</artifactId>
 			<version>1.5.7-4</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-all</artifactId>
+			<version>4.2.8.Final</version>
 		</dependency>
 	</dependencies>
 

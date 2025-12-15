@@ -56,7 +56,7 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 			}
 
 			//データ形式
-			if (header.getKey().equalsIgnoreCase("ACCEPT")) {
+			if (header.getKey().equalsIgnoreCase("ACCEPT") || header.getKey().equalsIgnoreCase("CONTENT-TYPE")) {
 				try {
 					request_data_type = DataType.from_mimetype(header.getValue());
 				} catch (IllegalArgumentException ex) {

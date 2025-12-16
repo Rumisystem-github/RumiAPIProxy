@@ -1,24 +1,15 @@
 package su.rumishistem.rumi_api_proxy.Tool;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
-import com.github.luben.zstd.ZstdOutputStream;
-
 import su.rumishistem.rumi_api_proxy.Type.EncodeType;
 
 public class ByteEncoder {
-	public static byte[] encode(EncodeType type, byte[] plain) throws IOException {
+	public static byte[] encode(EncodeType type, byte[] plain) throws IOException, InterruptedException {
 		byte[] encoded;
 
 		switch (type) {
 			case Zstd:
-				ByteArrayOutputStream baos = new ByteArrayOutputStream();
-				ZstdOutputStream zos = new ZstdOutputStream(baos);
-				zos.write(plain);
-				zos.close();
-				encoded = baos.toByteArray();
-				baos.close();
+				encoded = new Zstd().compress(plain);
 				break;
 
 			default:

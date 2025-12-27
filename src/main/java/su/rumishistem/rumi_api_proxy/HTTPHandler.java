@@ -19,7 +19,6 @@ import su.rumishistem.rumi_api_proxy.Tool.ResolveHost;
 import su.rumishistem.rumi_api_proxy.Tool.ServerResponseConverter;
 import su.rumishistem.rumi_api_proxy.Type.DataType;
 import su.rumishistem.rumi_api_proxy.Type.EncodeType;
-import su.rumishistem.rumi_java_lib.EXCEPTION_READER;
 import su.rumishistem.rumi_java_lib.Ajax.Ajax;
 import su.rumishistem.rumi_java_lib.Ajax.AjaxResult;
 import su.rumishistem.rumi_java_lib.LOG_PRINT.LOG_TYPE;
@@ -29,131 +28,144 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 	protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest r) throws Exception {
 		String url = r.uri();
 		HttpMethod request_method = r.method();
-		EncodeType request_encode = EncodeType.Plain;
-		DataType request_data_type = DataType.None;
-		int request_body_length = 0;
+		DataType client_accept_type = DataType.None;				//クライアントが許可するデータ形式
+		DataType client_contents_type = DataType.None;			//クライアントが送るデータ形式
+		EncodeType client_accept_encode = EncodeType.Plain;		//クライアントが許可する圧縮方式
+		EncodeType client_contents_encode = EncodeType.Plain;	//クライアントが送る圧縮方式
+		boolean use_client_contents = false;
+
+		String server_contents_type;								//サーバーが送るデータ形式(サーバーからはPNGとかも飛んでくる可能性があるので)
+		int server_status = 0;
+		byte[] server_body;
+
+		//統計用
+		int length_client_contents = 0;
+		int length_client_encoded_contents = 0;
+		int length_server_contents_length = 0;
+		int length_server_encoded_contents = 0;
+
+		//リクエストボディがあるタイプのメソッドか？
+		if (request_method.equals(HttpMethod.POST) || request_method.equals(HttpMethod.PATCH)) {
+			use_client_contents = true;
+		}
 
 		//URLを完成させる
 		url = "http:/" + url;
 
-		//Ajaxの用意
+		//Ajaxを用意
 		Ajax ajax = new Ajax(url);
 
-		//ヘッダー
-		HttpHeaders header_list = r.headers();
-		for (Map.Entry<String, String> header:header_list) {
-			if (header.getKey().equalsIgnoreCase("HOST")) continue;
-			if (header.getKey().equalsIgnoreCase("Content-Length")) continue;
-			if (header.getKey().equalsIgnoreCase("Connection")) continue;
-			if (header.getKey().equalsIgnoreCase("Transfer-Encoding")) continue;
-			if (header.getKey().equalsIgnoreCase("Upgrade")) continue;
-			if (header.getKey().equalsIgnoreCase("Expect")) continue;
+		//クライアントからのヘッダーを読み込む
+		for (Map.Entry<String, String> header:r.headers()) {
+			String name = header.getKey().toUpperCase();
+			//触れてはいけないヘッダーを無視
+			if (name.equals("HOST") || name.equals("CONTENT-LENGTH") || name.equals("CONNECTION") || name.equals("TRANSFER-ENCODING") || name.equals("UPGRADE") || name.equals("EXPECT")) continue;
 
-			//エンコード設定
-			if (header.getKey().equalsIgnoreCase("RSV-ENCODE")) {
-				request_encode = EncodeType.resolve(header.getValue());
-				continue;
+			switch (name) {
+				//クライアントが許可している圧縮方式
+				case "RSV-ACCEPT-ENCODE":
+					client_accept_encode = EncodeType.resolve(header.getValue());
+					break;
+				//クライアントが送信している圧縮方式
+				case "RSV-CONTENT-ENCODE":
+					client_contents_encode = EncodeType.resolve(header.getValue());
+					break;
+				//クライアントが許可しているデータ形式
+				case "ACCEPT":
+					client_accept_type = DataType.from_mimetype(header.getValue());
+					if (client_accept_type == DataType.None) {
+						ajax.set_header("Content-Type", header.getValue());
+
+						//「APIにHTMLを要求するわけがない」ということでJSONにすり替え
+						if (header.getValue().startsWith("text/html")) {
+							client_accept_type = DataType.JSON;
+						}
+					}
+					break;
+				//クライアントが送信しているデータ形式
+				case "CONTENT-TYPE":
+					client_contents_type = DataType.from_mimetype(header.getValue());
+					if (client_contents_type == DataType.None) {
+						ajax.set_header("Content-Type", header.getValue());
+					}
+					break;
+				//その他
+				default:
+					ajax.set_header(name, header.getValue());
+					break;
 			}
-
-			//データ形式
-			if (header.getKey().equalsIgnoreCase("ACCEPT") || header.getKey().equalsIgnoreCase("CONTENT-TYPE")) {
-				try {
-					request_data_type = DataType.from_mimetype(header.getValue());
-				} catch (IllegalArgumentException ex) {
-					request_data_type = DataType.None;
-				}
-				continue;
-			}
-
-			//Ajaxのヘッダーをセット
-			ajax.set_header(header.getKey(), header.getValue());
 		}
 
-		//サーバーからの応答
-		byte[] server_response_body;
-		int server_response_code;
-		String server_response_type;
-		//List<String> server_response_header_list = new ArrayList<String>();
+		//サーバーへ送信
+		if (use_client_contents) {
+			//クライアントからのデータがある
+			ByteBuf contents = r.content();
+			length_client_contents = contents.readableBytes();
 
-		if (request_method.equals(HttpMethod.POST) || request_method.equals(HttpMethod.PATCH)) {
-			//リクエストボディーがあるタイプのメソッド
-			ByteBuf content = r.content();
-			request_body_length = content.readableBytes();
-			byte[] request_body = new byte[request_body_length];
-			content.readBytes(request_body);
+			//読み取る
+			byte[] body = new byte[length_client_contents];
+			contents.readBytes(body);
 
-			//デコード
-			if (request_encode != EncodeType.Plain) {
-				request_body = ByteDecorder.decode(request_encode, request_body);
+			//圧縮をデコード
+			if (client_contents_encode != EncodeType.Plain) {
+				body = ByteDecorder.decode(client_contents_encode, body);
 			}
 
-			if (request_data_type != DataType.None) {
-				//変換
-				request_body = ClientRequestConverter.convert(ResolveHost.host(url), request_data_type, request_body);
+			//データ形式を変換(DICTな物に限る)
+			if (client_contents_type != DataType.None) {
+				body = ClientRequestConverter.convert(ResolveHost.host(url), client_contents_type, body);
 			}
 
+			//送信する
 			AjaxResult result;
 			if (request_method.equals(HttpMethod.POST)) {
-				result = ajax.POST(request_body);
-			} else if (request_method.equals(HttpMethod.PATCH)) {
-				result = ajax.PATCH(request_body);
+				result = ajax.POST(body);
 			} else {
-				throw new UnsupportedOperationException("非対応なメソッド：" + request_method.name());
+				result = ajax.PATCH(body);
 			}
 
-			server_response_body = result.get_body_as_byte();
-			server_response_code = result.get_code();
-			server_response_type = result.get_header("CONTENT-TYPE");
+			server_status = result.get_code();
+			server_body = result.get_body_as_byte();
+			server_contents_type = result.get_header("CONTENT-TYPE");
 		} else {
-			//無い
+			//ない
 			AjaxResult result;
 			if (request_method.equals(HttpMethod.GET)) {
 				result = ajax.GET();
-			} else if (request_method.equals(HttpMethod.DELETE)) {
+			} else {
 				result = ajax.DELETE();
-			} else {
-				throw new UnsupportedOperationException("非対応なメソッド：" + request_method.name());
 			}
 
-			server_response_body = result.get_body_as_byte();
-			server_response_code = result.get_code();
-			server_response_type = result.get_header("CONTENT-TYPE");
+			server_status = result.get_code();
+			server_body = result.get_body_as_byte();
+			server_contents_type = result.get_header("CONTENT-TYPE");
 		}
 
-		request_log(url, request_encode, request_data_type, request_body_length);
+		//サーバーからのデータを、クライアントが許可している形式に変換する(DICT系のみ)
+		if (DataType.from_mimetype(server_contents_type) != DataType.None) {
+			ServerResponseConverter converter = new ServerResponseConverter();
+			converter.convert(server_contents_type, server_body, client_accept_type);
+			server_body = converter.get_body();
 
-		//サーバーからの応答を変換する
-		byte[] client_return_body;
-		String client_return_type;
-		if (server_response_type.equalsIgnoreCase("application/rsdf") || server_response_type.startsWith("application/json")) {
-			if (request_data_type != DataType.None) {
-				ServerResponseConverter converter = new ServerResponseConverter();
-				converter.convert(server_response_type, server_response_body, request_data_type);
-				client_return_body = converter.get_body();
-				client_return_type = converter.get_type();
-			} else {
-				ServerResponseConverter converter = new ServerResponseConverter();
-				converter.convert(server_response_type, server_response_body, DataType.JSON);
-				client_return_body = converter.get_body();
-				client_return_type = converter.get_type();
+			switch (client_accept_type) {
+				case RSDF:
+					server_contents_type = "application/rsdf";
+					break;
+				case JSON:
+					server_contents_type = "application/json; charset=UTF-8";
+					break;
 			}
-		} else {
-			//データをそのまま送り返す
-			client_return_body = server_response_body;
-			client_return_type = server_response_type;
 		}
 
-		//エンコード
-		if (request_encode != EncodeType.Plain) {
-			client_return_body = ByteEncoder.encode(request_encode, client_return_body);
+		//クライアントが許可している圧縮方式にエンコードする
+		if (client_accept_encode != EncodeType.Plain) {
+			server_body = ByteEncoder.encode(client_accept_encode, server_body);
 		}
 
-		response_log(url, server_response_body.length, request_encode, server_response_type);
-
-		//応答
-		FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(server_response_code), Unpooled.wrappedBuffer(client_return_body));
-		response.headers().set(HttpHeaderNames.CONTENT_TYPE, client_return_type);
+		FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(server_status), Unpooled.wrappedBuffer(server_body));
+		response.headers().set(HttpHeaderNames.CONTENT_TYPE, server_contents_type);
 		response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+		//response.headers().set("RSV-CONTENT-ENCODE", client_accept_encode.name()); TODO:←いつかやる
 		ctx.writeAndFlush(response);
 	}
 
@@ -184,17 +196,5 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 		} finally {
 			ctx.close();
 		}
-	}
-
-	private void request_log(String url, EncodeType encode, DataType type, int body_length) {
-		LOG(LOG_TYPE.INFO, "<Client>→["+encode.name()+" | "+type.name()+" | "+body_length+"byte]→{Plain}→<"+url+">");
-	}
-	
-	private void response_log(String url, int response_length, EncodeType encode, String response_type) {
-		String type = response_type;
-		try {
-			type = DataType.from_mimetype(type).name();
-		} catch (IllegalArgumentException ex) {}
-		LOG(LOG_TYPE.INFO, "<"+url+">→[Plain | "+type+" | "+response_length+"byte]→{"+encode.name()+"}→<Client>");
 	}
 }

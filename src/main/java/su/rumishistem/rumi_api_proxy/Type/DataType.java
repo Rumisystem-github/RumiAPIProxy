@@ -11,7 +11,7 @@ public enum DataType {
 		} else if (mimetype.startsWith("application/rsdf")) {
 			return RSDF;
 		} else {
-			throw new IllegalArgumentException("非対応：" + mimetype);
+			return None;
 		}
 	}
 }

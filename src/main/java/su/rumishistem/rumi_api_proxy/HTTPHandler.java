@@ -1,7 +1,5 @@
 package su.rumishistem.rumi_api_proxy;
 
-import static su.rumishistem.rumi_java_lib.LOG_PRINT.Main.LOG;
-
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Map;
@@ -21,7 +19,6 @@ import su.rumishistem.rumi_api_proxy.Type.DataType;
 import su.rumishistem.rumi_api_proxy.Type.EncodeType;
 import su.rumishistem.rumi_java_lib.Ajax.Ajax;
 import su.rumishistem.rumi_java_lib.Ajax.AjaxResult;
-import su.rumishistem.rumi_java_lib.LOG_PRINT.LOG_TYPE;
 
 public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 	@Override
@@ -142,7 +139,7 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 		}
 
 		//サーバーからのデータを、クライアントが許可している形式に変換する(DICT系のみ)
-		if (DataType.from_mimetype(server_contents_type) != DataType.None) {
+		if (DataType.from_mimetype(server_contents_type) != DataType.None && client_accept_type != DataType.None) {
 			ServerResponseConverter converter = new ServerResponseConverter();
 			converter.convert(server_contents_type, server_body, client_accept_type);
 			server_body = converter.get_body();

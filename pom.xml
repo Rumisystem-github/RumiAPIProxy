@@ -29,6 +29,11 @@
 			<version>13.85</version>
 		</dependency>
 		<dependency>
+			<groupId>su.rumishistem</groupId>
+			<artifactId>rsdf-java</artifactId>
+			<version>1.0</version>
+		</dependency>
+		<dependency>
 			<groupId>io.netty</groupId>
 			<artifactId>netty-all</artifactId>
 			<version>4.1.129.Final</version>

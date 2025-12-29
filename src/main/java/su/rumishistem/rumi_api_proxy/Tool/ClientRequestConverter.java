@@ -6,7 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import su.rumishistem.rumi_api_proxy.Main;
 import su.rumishistem.rumi_api_proxy.Type.DataType;
-import su.rumishistem.rumi_java_lib.RSDF.*;
+import su.rumishistem.rsdf_java.*;
 
 public class ClientRequestConverter {
 	public static byte[] convert(String host, DataType request_type, byte[] request_body) throws IOException {

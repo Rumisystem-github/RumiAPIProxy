@@ -7,7 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DatabindException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import su.rumishistem.rumi_api_proxy.Type.DataType;
-import su.rumishistem.rumi_java_lib.RSDF.*;
+import su.rumishistem.rsdf_java.*;
 
 public class ServerResponseConverter {
 	private byte[] client_return_body;

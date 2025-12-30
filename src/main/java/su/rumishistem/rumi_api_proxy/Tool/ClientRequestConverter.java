@@ -37,6 +37,7 @@ public class ClientRequestConverter {
 				break;
 			case JSON:
 				result = new ObjectMapper().writeValueAsBytes(dict);
+				break;
 			default:
 				throw new UnsupportedOperationException("非対応な形式" + request_type.name());
 		}

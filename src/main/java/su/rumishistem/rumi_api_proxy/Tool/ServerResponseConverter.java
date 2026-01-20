@@ -32,7 +32,7 @@ public class ServerResponseConverter {
 				client_return_type = "application/rsdf";
 				break;
 			case JSON:
-				client_return_body = new ObjectMapper().writeValueAsBytes(dict);
+				client_return_body = new ObjectMapper().registerModule(new JacksonModule()).writeValueAsBytes(dict);
 				client_return_type = "application/json; charset=UTF-8";
 				break;
 			default:

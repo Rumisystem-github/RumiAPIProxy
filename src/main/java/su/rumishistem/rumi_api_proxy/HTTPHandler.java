@@ -2,6 +2,10 @@ package su.rumishistem.rumi_api_proxy;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -17,10 +21,10 @@ import su.rumishistem.rumi_api_proxy.Tool.ResolveHost;
 import su.rumishistem.rumi_api_proxy.Tool.ServerResponseConverter;
 import su.rumishistem.rumi_api_proxy.Type.DataType;
 import su.rumishistem.rumi_api_proxy.Type.EncodeType;
-import su.rumishistem.rumi_java_lib.Ajax.Ajax;
-import su.rumishistem.rumi_java_lib.Ajax.AjaxResult;
 
 public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
+	private static final HttpClient ajax = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NORMAL).build();
+
 	@Override
 	protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest r) throws Exception {
 		String url = r.uri();
@@ -50,7 +54,8 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 		url = "http:/" + url;
 
 		//Ajaxを用意
-		Ajax ajax = new Ajax(url);
+		HttpRequest.Builder ajax_builder = HttpRequest.newBuilder();
+		ajax_builder.uri(URI.create(url));
 
 		//クライアントからのヘッダーを読み込む
 		for (Map.Entry<String, String> header:r.headers()) {
@@ -71,7 +76,7 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 				case "ACCEPT":
 					client_accept_type = DataType.from_mimetype(header.getValue());
 					if (client_accept_type == DataType.None) {
-						ajax.set_header("Content-Type", header.getValue());
+						ajax_builder.header("Content-Type", header.getValue());
 
 						//「APIにHTMLを要求するわけがない」ということでJSONにすり替え
 						if (header.getValue().startsWith("text/html")) {
@@ -83,17 +88,18 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 				case "CONTENT-TYPE":
 					client_contents_type = DataType.from_mimetype(header.getValue());
 					if (client_contents_type == DataType.None) {
-						ajax.set_header("Content-Type", header.getValue());
+						ajax_builder.header("Content-Type", header.getValue());
 					}
 					break;
 				//その他
 				default:
-					ajax.set_header(name, header.getValue());
+					ajax_builder.header(name, header.getValue());
 					break;
 			}
 		}
 
 		//サーバーへ送信
+		HttpResponse<byte[]> result;
 		if (use_client_contents) {
 			//クライアントからのデータがある
 			ByteBuf contents = r.content();
@@ -114,29 +120,27 @@ public class HTTPHandler extends SimpleChannelInboundHandler<FullHttpRequest>{
 			}
 
 			//送信する
-			AjaxResult result;
 			if (request_method.equals(HttpMethod.POST)) {
-				result = ajax.POST(body);
+				ajax_builder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
 			} else {
-				result = ajax.PATCH(body);
+				ajax_builder.method("PATCH", HttpRequest.BodyPublishers.ofByteArray(body));
 			}
 
-			server_status = result.get_code();
-			server_body = result.get_body_as_byte();
-			server_contents_type = result.get_header("CONTENT-TYPE");
+			result = ajax.send(ajax_builder.build(), HttpResponse.BodyHandlers.ofByteArray());
 		} else {
 			//ない
-			AjaxResult result;
 			if (request_method.equals(HttpMethod.GET)) {
-				result = ajax.GET();
+				ajax_builder.GET();
 			} else {
-				result = ajax.DELETE();
+				ajax_builder.DELETE();
 			}
 
-			server_status = result.get_code();
-			server_body = result.get_body_as_byte();
-			server_contents_type = result.get_header("CONTENT-TYPE");
+			result = ajax.send(ajax_builder.build(), HttpResponse.BodyHandlers.ofByteArray());
 		}
+
+		server_status = result.statusCode();
+		server_body = result.body();
+		server_contents_type = result.headers().firstValue("content-type").orElse(null);
 
 		//サーバーからのデータを、クライアントが許可している形式に変換する(DICT系のみ)
 		if (DataType.from_mimetype(server_contents_type) != DataType.None && client_accept_type != DataType.None) {

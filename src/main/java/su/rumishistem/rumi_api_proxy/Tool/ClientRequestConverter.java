@@ -18,6 +18,19 @@ public class ClientRequestConverter {
 				break;
 			case JSON:
 				dict = new ObjectMapper().readValue(request_body, new TypeReference<LinkedHashMap<String, Object>>() {});
+
+				dict.replaceAll((key, value) -> {
+					if (value instanceof String str && str.matches("\\d+")) {
+						long num = Long.parseLong(str);
+						if (num <= Integer.MAX_VALUE && num >= Integer.MIN_VALUE) {
+							return (int)num;
+						}
+
+						return num;
+					} else {
+						return value;
+					}
+				});
 				break;
 			default:
 				throw new UnsupportedOperationException("非対応な形式" + request_type.name());
